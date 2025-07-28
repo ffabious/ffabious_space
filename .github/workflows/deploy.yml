@@ -75,6 +75,7 @@ jobs:
           script: |
             # Stop existing server if running
             pkill -f "python3 -m http.server 3000" || true
+            screen -S ffabious-web -X quit || true
 
             # Extract the web app
             cd /root/ffabious_space
@@ -83,17 +84,17 @@ jobs:
             # Set proper permissions
             chmod -R 755 /root/ffabious_space
 
-            # Start the web server on port 3000 with disown to persist after SSH disconnect
+            # Start the web server in a detached screen session
             cd /root/ffabious_space
-            nohup python3 -m http.server 3000 > server.log 2>&1 &
-            disown
+            screen -dmS ffabious-web bash -c "python3 -m http.server 3000 > server.log 2>&1"
 
             # Clean up temporary files
             rm -f /tmp/ffabious-space-web.tar.gz
 
-            echo "Web server started on port 3000"
+            echo "Web server started on port 3000 in screen session 'ffabious-web'"
             sleep 2
             echo "Server PID: $(pgrep -f 'python3 -m http.server 3000')"
+            echo "Screen sessions: $(screen -ls | grep ffabious-web || echo 'None found')"
 
       - name: Notify deployment success
         if: success() && github.ref == 'refs/heads/main'

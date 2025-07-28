@@ -1,0 +1,107 @@
+name: Deploy Flutter App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.0"
+          channel: "stable"
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build web app
+        run: |
+          flutter build web --release --web-renderer html
+
+      - name: Create deployment package
+        run: |
+          tar -czf ffabious-space-web.tar.gz -C build/web .
+
+      - name: Deploy to server
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH }}
+          port: 22
+          script: |
+            # Create deployment directory if it doesn't exist
+            mkdir -p /root/ffabious_space
+
+      - name: Upload build artifacts
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH }}
+          port: 22
+          source: "ffabious-space-web.tar.gz"
+          target: "/tmp/"
+
+      - name: Extract and setup deployment
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH }}
+          port: 22
+          script: |
+            # Stop existing server if running
+            pkill -f "python3 -m http.server 3000" || true
+
+            # Extract the web app
+            cd /root/ffabious_space
+            tar -xzf /tmp/ffabious-space-web.tar.gz
+
+            # Set proper permissions
+            chmod -R 755 /root/ffabious_space
+
+            # Start the web server on port 3000
+            cd /root/ffabious_space
+            nohup python3 -m http.server 3000 > /dev/null 2>&1 &
+
+            # Clean up temporary files
+            rm -f /tmp/ffabious-space-web.tar.gz
+
+            echo "Web server started on port 3000"
+
+      - name: Notify deployment success
+        if: success() && github.ref == 'refs/heads/main'
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Web app deployed to: https://www.ffabious.space"
+          echo "Commit: ${{ github.sha }}"
+          echo "Deployed at: $(date)"
+
+      - name: Notify deployment failure
+        if: failure() && github.ref == 'refs/heads/main'
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details."

@@ -83,14 +83,17 @@ jobs:
             # Set proper permissions
             chmod -R 755 /root/ffabious_space
 
-            # Start the web server on port 3000
+            # Start the web server on port 3000 with disown to persist after SSH disconnect
             cd /root/ffabious_space
-            nohup python3 -m http.server 3000 > /dev/null 2>&1 &
+            nohup python3 -m http.server 3000 > server.log 2>&1 &
+            disown
 
             # Clean up temporary files
             rm -f /tmp/ffabious-space-web.tar.gz
 
             echo "Web server started on port 3000"
+            sleep 2
+            echo "Server PID: $(pgrep -f 'python3 -m http.server 3000')"
 
       - name: Notify deployment success
         if: success() && github.ref == 'refs/heads/main'
